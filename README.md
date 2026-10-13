@@ -2,6 +2,8 @@
 
 Turn a `<template>` into a component class: fill its `<slot>`s, interpolate `${props}`, and update the rendered element in place. No dependencies, no build step, no virtual DOM.
 
+**Website and playground: https://jwo1f.github.io/tagshift/**
+
 ```sh
 npm install tagshift
 ```
@@ -90,6 +92,10 @@ Thrown when the template and the component's props or slots do not match. Passin
 ```sh
 npx serve .
 ```
+
+## Website
+
+The website lives in [`site/`](site). Serve the repository root and open `/site/` to preview it; pushes to `main` deploy it to GitHub Pages.
 
 ## License
 
