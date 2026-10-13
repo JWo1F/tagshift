@@ -84,6 +84,14 @@ TypeScript users can name the element type: `define<UserCardElement>('user-card'
 
 An element renders once: when created by the factory, or when first connected to the document. Moving it later does not render it again. An element in the page's own HTML waits until the document has finished parsing, so its children are in place before the slots are filled. Children added after rendering stay where they are added; they are not assigned to slots.
 
+## Example
+
+[`example/index.html`](example/index.html) shows a component used in HTML, updated through its attributes, and created from JavaScript. Serve the repository root with any static server and open `/example/`:
+
+```sh
+npx serve .
+```
+
 ## License
 
 [MIT](LICENSE) © Aleksandr Ivashkin

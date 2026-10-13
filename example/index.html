@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tagshift example</title>
+  <style>
+    :root {
+      --bg: #f6f5f2;
+      --surface: #ffffff;
+      --text: #1d1d1b;
+      --muted: #6b6a66;
+      --border: #e2e0da;
+      --accent: #3b5bdb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161615;
+        --surface: #1f1f1e;
+        --text: #ecebe8;
+        --muted: #9a9893;
+        --border: #34332f;
+        --accent: #8ca2ff;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px 16px 64px;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 40px 0 12px; font-size: 18px; }
+    p.lead { margin: 0; color: var(--muted); }
+    code { font-size: 14px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+    input, select, button {
+      font: inherit;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* The component renders into light DOM, so page styles reach it. */
+    user-card { display: block; }
+
+    .card {
+      height: 100%;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .card--admin { border-left-color: var(--accent); }
+    .card h3 { margin: 0; font-size: 17px; }
+    .card .role { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+    .card .body { min-height: 24px; }
+    .card .empty { color: var(--muted); font-style: italic; }
+    .card footer { display: flex; gap: 8px; margin-top: 12px; }
+    .card footer:empty { display: none; }
+  </style>
+</head>
+<body>
+  <template id="user-card">
+    <article class="card card--${role}" title="${firstName} ${lastName}">
+      <h3>${firstName} ${lastName}</h3>
+      <p class="role">${role}</p>
+      <div class="body"><slot><span class="empty">No bio yet</span></slot></div>
+      <footer><slot name="actions"></slot></footer>
+    </article>
+  </template>
+
+  <main>
+    <h1>tagshift</h1>
+    <p class="lead">A <code>&lt;template&gt;</code> registered as <code>&lt;user-card&gt;</code>.</p>
+
+    <h2>Written in HTML</h2>
+    <div class="grid">
+      <user-card first-name="Ada" last-name="Lovelace" role="admin">
+        <p>Wrote the first published algorithm.</p>
+        <button slot="actions">Follow</button>
+        <button slot="actions">Message</button>
+      </user-card>
+
+      <!-- No default slot content, so the fallback shows. -->
+      <user-card first-name="Alan" last-name="Turing" role="member"></user-card>
+    </div>
+
+    <h2>Reactive attributes</h2>
+    <div class="controls">
+      <input id="first-name" value="Grace" aria-label="First name">
+      <select id="role" aria-label="Role">
+        <option>member</option>
+        <option>admin</option>
+      </select>
+    </div>
+    <div class="grid">
+      <user-card id="live" first-name="Grace" last-name="Hopper" role="member">
+        <p>Edit the fields above: only the text that uses them changes.</p>
+      </user-card>
+    </div>
+
+    <h2>Created from JavaScript</h2>
+    <div class="controls">
+      <button id="add" class="primary">Add a card</button>
+    </div>
+    <div id="created" class="grid"></div>
+  </main>
+
+  <script type="module">
+    import { define } from '../src/index.js';
+
+    const UserCard = define('user-card', document.getElementById('user-card'));
+
+    const live = document.getElementById('live');
+    document.getElementById('first-name').addEventListener('input', (event) => {
+      live.setAttribute('first-name', event.target.value);
+    });
+    document.getElementById('role').addEventListener('change', (event) => {
+      live.setAttribute('role', event.target.value);
+    });
+
+    const people = [
+      ['Linus', 'Torvalds', 'member'],
+      ['Margaret', 'Hamilton', 'admin'],
+      ['Dennis', 'Ritchie', 'member'],
+      ['Barbara', 'Liskov', 'admin'],
+    ];
+    let count = 0;
+
+    document.getElementById('add').addEventListener('click', () => {
+      const [firstName, lastName, role] = people[count++ % people.length];
+
+      const remove = document.createElement('button');
+      remove.textContent = 'Remove';
+
+      const card = UserCard({
+        props: { firstName, lastName, role },
+        slots: {
+          default: `Card #${count}, created with UserCard().`,
+          actions: remove,
+        },
+      });
+
+      remove.addEventListener('click', () => card.remove());
+      document.getElementById('created').append(card);
+    });
+  </script>
+</body>
+</html>
