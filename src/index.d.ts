@@ -1,8 +1,8 @@
 /**
- * A value that can be interpolated into a template. It is converted with
- * `String()` and inserted as plain text.
+ * A value for a prop. It is converted with `String()` and stored as an
+ * attribute; `undefined` leaves the attribute out.
  */
-export type PropValue = string | number | boolean | bigint;
+export type PropValue = string | number | boolean | bigint | undefined;
 
 /**
  * Content for a single slot. Strings become text nodes; iterables such as
@@ -12,36 +12,45 @@ export type SlotContent = Node | string | Iterable<Node | string>;
 
 export interface CreateOptions {
   /**
+   * Attribute values, keyed by camelCase prop name: `userName` sets the
+   * `user-name` attribute that `${userName}` shows. Props the template does
+   * not use are still set as attributes, e.g. `id` or `class`.
+   */
+  props?: Record<string, PropValue>;
+
+  /**
    * Content for each slot, keyed by slot name. `default` targets the
    * `<slot>` without a `name` attribute. A slot with no entry keeps its
    * fallback children.
    */
   slots?: Record<string, SlotContent | undefined>;
-
-  /**
-   * Values for `${name}` placeholders in text and attribute values.
-   */
-  props?: Record<string, PropValue>;
 }
 
 /**
- * Thrown when a template cannot be turned into an element: a placeholder has
- * no matching prop, a slot is unknown or declared twice, or the template does
- * not have exactly one root element.
+ * Creates a rendered instance of a component registered with `define()`.
+ */
+export type Component<T extends HTMLElement = HTMLElement> = (options?: CreateOptions) => T;
+
+/**
+ * Thrown when a component cannot be rendered: content is passed to a slot
+ * the template does not declare, or a slot name is declared twice.
  */
 export class TemplateError extends Error {
   name: 'TemplateError';
 }
 
 /**
- * Builds an element from a `<template>`: interpolates `${name}` placeholders
- * with `props`, then replaces `<slot>` elements with `slots`. The template
- * itself is never modified.
+ * Registers a custom element rendered from a `<template>` into its light DOM,
+ * and returns a factory that creates it.
  *
- * @throws {TemplateError} When the template and options do not match.
+ * `${propName}` placeholders show the `prop-name` attribute and update when
+ * it changes. `<slot>` elements are replaced with the element's children,
+ * assigned by their `slot` attribute.
+ *
  * @throws {TypeError} When `template` is not a `<template>` element.
+ * @throws {DOMException} When `name` is not a valid custom element name or is already defined.
  */
-export function create<T extends Element = HTMLElement>(
+export function define<T extends HTMLElement = HTMLElement>(
+  name: string,
   template: HTMLTemplateElement,
-  options?: CreateOptions,
-): T;
+): Component<T>;
