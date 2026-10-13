@@ -11,6 +11,14 @@
   ],
   "author": "Aleksandr Ivashkin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JWo1F/tagshift.git"
+  },
+  "homepage": "https://github.com/JWo1F/tagshift#readme",
+  "bugs": {
+    "url": "https://github.com/JWo1F/tagshift/issues"
+  },
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
