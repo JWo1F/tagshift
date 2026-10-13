@@ -1,7 +1,7 @@
 {
   "name": "tagshift",
   "version": "1.0.0",
-  "description": "Turn a <template> into a ready-to-use element: fill its slots and interpolate ${props}.",
+  "description": "Turn a <template> into a component class: fill its slots, interpolate ${props}, update in place.",
   "keywords": [
     "template",
     "slot",

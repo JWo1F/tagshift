@@ -1,6 +1,6 @@
 # tagshift
 
-Turn a `<template>` into a custom element. Slots are filled from the element's children, `${props}` come from its attributes and update when they change. No dependencies, no build step, no Shadow DOM.
+Turn a `<template>` into a component class: fill its `<slot>`s, interpolate `${props}`, and update the rendered element in place. No dependencies, no build step, no virtual DOM.
 
 ```sh
 npm install tagshift
@@ -11,7 +11,7 @@ npm install tagshift
 ```html
 <template id="user-card">
   <article class="card card--${variant}">
-    <h2>Hello, ${firstName}!</h2>
+    <h2>Hello, ${name}!</h2>
     <div class="body"><slot>Nothing here yet</slot></div>
     <footer><slot name="actions"></slot></footer>
   </article>
@@ -21,85 +21,71 @@ npm install tagshift
 ```js
 import { define } from 'tagshift';
 
-const UserCard = define('user-card', document.getElementById('user-card'));
-```
+const UserCard = define(document.getElementById('user-card'));
 
-Use it in HTML:
-
-```html
-<user-card first-name="Alex" variant="compact">
-  <p>Joined in 2026.</p>
-  <button slot="actions">Follow</button>
-</user-card>
-```
-
-Or create it from JavaScript:
-
-```js
 const card = new UserCard({
-  props: { firstName: 'Alex', variant: 'compact' },
+  props: { name: 'Alex', variant: 'compact' },
   slots: {
     default: document.createElement('p'),
     actions: [followButton, messageButton],
   },
 });
 
-document.body.append(card);
+document.body.append(card.render());
 
-card.props.firstName = 'Sam';        // the heading updates
-card.slots.actions = unfollowButton; // the footer's content is replaced
+card.props.name = 'Sam';
+card.slots.actions = unfollowButton;
+card.render(); // updates the same element
 ```
 
 ## API
 
-### `define(name, template)`
+### `define(template)`
 
-Registers a custom element called `name` that renders `template` into its own children (light DOM), and returns its class. The template is copied at definition time, so later changes to it have no effect. Throws if `name` is not a valid custom element name or is already defined.
+Returns a component class for `template`. The template is copied, so later changes to it have no effect. It must contain exactly one root element, which is not a `<slot>`; whitespace and comments around it are ignored. Otherwise `define()` throws a `TemplateError`.
 
 ### `new Component({ props?, slots? })`
 
-Returns a new, already rendered element, ready to insert.
+Creates an instance holding copies of `props` and `slots`. Nothing is rendered yet.
 
-- `props` — attribute values, keyed by camelCase name: `firstName` sets `first-name`. Props the template does not use are still set as attributes, so `id`, `class` or `ariaLabel` work too. `undefined` or `null` leaves the attribute out.
-- `slots` — content for each slot, keyed by slot name.
+### `component.props`
 
-Without options (`new Component()`, `document.createElement`, or HTML) the element renders when first connected to the document.
+Values for `${name}` placeholders. Change them, or replace the whole object, then call `render()`.
 
-### `element.props`
+### `component.slots`
 
-Reads and writes the element's attributes by camelCase name. Reading returns the attribute's string value, or `undefined` when it is missing. Writing updates the rendered placeholders in place; `undefined`, `null` or `delete` removes the attribute. Changing the attribute directly works the same way.
+Content for each slot, keyed by slot name. Change them, or replace the whole object, then call `render()`.
 
-### `element.slots`
+### `component.render()`
 
-Reads and writes each slot's content by slot name. Writing replaces the content in place; `undefined` or `delete` brings back the slot's fallback. Reading returns the assigned nodes as an array, or `undefined` while the fallback shows. Before the element is rendered, assigned content waits and takes priority over its children.
+Returns the rendered root element, updated with the current `props` and `slots`. The first call builds it; every later call updates the same element in place and returns it.
 
-TypeScript users can name the element type: `define<UserCardElement>('user-card', template)`, where `UserCardElement extends ComponentElement`.
+TypeScript users can name the root element type: `define<HTMLFormElement>(template)`.
 
 ### Props
 
-- Placeholders work in text and in attribute values: `${firstName}`, `${ firstName }`. A placeholder shows the matching kebab-case attribute of the element.
-- When the attribute changes, only the text and attribute values that use it are updated; nothing is re-created.
-- Values are inserted as **text**, so `<b>` in a value is shown literally, never parsed as HTML.
-- A missing attribute renders as an empty string, the same as an empty one.
+- Placeholders work in text and in attribute values: `${name}`, `${ name }`. Names follow JavaScript identifier rules.
+- Values are converted with `String()` and inserted as **text**, so `<b>` in a value is shown literally, never parsed as HTML.
+- A missing, `undefined` or `null` prop renders as an empty string.
+- `render()` writes only the text and attribute values whose result changed; nothing is re-created.
 
 ### Slots
 
 - `<slot>` (or `<slot name="">`) is the `default` slot; `<slot name="x">` is slot `x`.
-- In HTML, children go to the slot named by their `slot` attribute, or to the default slot. Whitespace and comments between them are ignored, so formatting does not hide fallback content.
-- From JavaScript, slot content can be a `Node`, a string, or any iterable of them: an array, a `NodeList`, a `DocumentFragment`. Strings are inserted as text. Passed nodes are **moved**, not copied.
+- Slot content can be a `Node`, a string, or any iterable of them: an array, a `NodeList`, a `DocumentFragment`. Strings are inserted as text. Passed nodes are **moved**, not copied.
+- A slot without content keeps its fallback children, as in native Shadow DOM. Set it to `undefined` or `delete` it to bring the fallback back; set it to `[]` to empty it.
+- A slot is refilled only when its value is no longer the same (`Object.is`). Assign a new array instead of changing one in place.
 - Each `<slot>` is replaced with an empty comment that marks where its content goes, so the content can be swapped later. Comments do not affect `:empty`.
-- A slot without content keeps its fallback children, as in native Shadow DOM. Pass `[]` to empty it.
-- Slotted content is never interpolated, so `${...}` inside it is left as is.
-- Content for a slot the template does not declare, or a slot name declared twice, throws a `TemplateError`. In HTML the error is reported to the console and the element keeps its original children.
-- A slot's name is resolved once, when the element renders.
+- Slotted content is never interpolated, so `${...}` inside it is left as is. A slot's name may use a placeholder; it is resolved on the first render.
+- Content for a slot the template does not declare, or a slot name declared twice, makes `render()` throw a `TemplateError`. An update that throws leaves the element as it was.
 
-### Rendering
+### `TemplateError`
 
-An element renders once: when created with options, or when first connected to the document. Moving it later does not render it again. An element in the page's own HTML waits until the document has finished parsing, so its children are in place before the slots are filled. Children appended after rendering stay where they are added; use `element.slots` to change slot content.
+Thrown when the template and the component's props or slots do not match. Passing something other than a `<template>` to `define()`, or unsupported slot content, throws a `TypeError`.
 
 ## Example
 
-[`example/index.html`](example/index.html) shows metric tiles written in HTML and updated through `props` every second. Serve the repository root with any static server and open `/example/`:
+[`example/index.html`](example/index.html) shows metric tiles that get new `props` and re-render every second. Serve the repository root with any static server and open `/example/`:
 
 ```sh
 npx serve .
