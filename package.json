@@ -1,11 +1,32 @@
 {
   "name": "tagshift",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Turn a <template> into a ready-to-use element: fill its slots and interpolate ${props}.",
+  "keywords": [
+    "template",
+    "slot",
+    "component",
+    "dom",
+    "interpolation"
+  ],
+  "author": "Aleksandr Ivashkin",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
   },
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm test"
+  },
+  "devDependencies": {
+    "happy-dom": "^21.0.1",
+    "vitest": "^5.0.4"
+  }
 }
