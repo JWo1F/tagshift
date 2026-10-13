@@ -1,18 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { define, TemplateError } from '../src/index.js';
-
-let counter = 0;
-
-// The custom element registry is global, so every test needs its own name.
-function component(html) {
-  const name = `test-component-${++counter}`;
-  return { name, Component: define(name, template(html)) };
-}
 
 function template(html) {
   const element = document.createElement('template');
   element.innerHTML = html;
   return element;
+}
+
+// Renders a component built from `html` with the given options.
+function render(html, options) {
+  const Component = define(template(html));
+  return new Component(options).render();
 }
 
 // The element's markup without the empty comments that mark slot positions.
@@ -26,552 +24,429 @@ function div(text) {
   return element;
 }
 
-// Parses markup and connects it, then returns the first element. Parsing
-// happens off-document because happy-dom, unlike browsers, connects custom
-// elements during innerHTML before their children are parsed.
-function mount(html) {
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  document.body.append(container);
-  return container.firstElementChild;
-}
-
 describe('define', () => {
-  it('registers a custom element and returns its class', () => {
-    const { name, Component } = component('<p>Hi</p>');
+  it('returns a class whose instances render the template', () => {
+    const Component = define(template('<section class="card"><p>Hi</p></section>'));
+    const component = new Component();
 
-    const element = new Component({});
-
-    expect(element).toBeInstanceOf(customElements.get(name));
-    expect(element.tagName).toBe(name.toUpperCase());
-    expect(html(element)).toBe('<p>Hi</p>');
-    expect(element.parentNode).toBeNull();
+    expect(component).toBeInstanceOf(Component);
+    expect(component.render().outerHTML).toBe('<section class="card"><p>Hi</p></section>');
   });
 
-  it('renders the template into the light DOM, with any number of root nodes', () => {
-    const { Component } = component('<h1>Title</h1> text <p>Body</p>');
+  it('does not register a custom element', () => {
+    const element = render('<section></section>');
 
-    expect(html(new Component({}))).toBe('<h1>Title</h1> text <p>Body</p>');
-    expect(new Component({}).shadowRoot).toBeNull();
+    expect(element.tagName).toBe('SECTION');
+    expect(customElements.get('section')).toBeUndefined();
   });
 
   it('copies the template, so later changes to it have no effect', () => {
     const source = template('<p>before</p>');
-    const name = `test-component-${++counter}`;
-    const Component = define(name, source);
+    const Component = define(source);
 
     source.innerHTML = '<p>after</p>';
 
-    expect(html(new Component({}))).toBe('<p>before</p>');
+    expect(new Component().render().outerHTML).toBe('<p>before</p>');
   });
 
-  it('renders elements written in HTML', () => {
-    const { name } = component('<p>Hello, ${name}!</p>');
+  it('leaves the template untouched', () => {
+    const source = template('<p>${name}<slot></slot></p>');
+    const Component = define(source);
 
-    const element = mount(`<${name} name="Alex"></${name}>`);
+    new Component({ props: { name: 'Alex' }, slots: { default: 'x' } }).render();
 
-    expect(html(element)).toBe('<p>Hello, Alex!</p>');
-  });
-
-  it('renders elements created with document.createElement once connected', () => {
-    const { name } = component('<p>${name}</p>');
-    const element = document.createElement(name);
-    element.setAttribute('name', 'Alex');
-
-    expect(html(element)).toBe('');
-    document.body.append(element);
-
-    expect(html(element)).toBe('<p>Alex</p>');
-  });
-
-  it('renders only once, even when moved', () => {
-    const { Component } = component('<p><slot></slot></p>');
-    const element = new Component({ slots: { default: 'x' } });
-
-    document.body.append(element);
-    document.body.prepend(element);
-
-    expect(html(element)).toBe('<p>x</p>');
-  });
-
-  it('waits for the document to be parsed before rendering', () => {
-    const { name } = component('<p><slot>fallback</slot></p>');
-    const element = document.createElement(name);
-    const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
-
-    document.body.append(element);
-    element.append('parsed later');
-    expect(html(element)).toBe('parsed later');
-
-    readyState.mockRestore();
-    document.dispatchEvent(new Event('DOMContentLoaded'));
-
-    expect(html(element)).toBe('<p>parsed later</p>');
+    expect(source.innerHTML).toBe('<p>${name}<slot></slot></p>');
   });
 
   it('rejects anything that is not a <template>', () => {
-    expect(() => define(`test-component-${++counter}`, document.createElement('div'))).toThrow(TypeError);
-    expect(() => define(`test-component-${++counter}`, null)).toThrow(TypeError);
+    expect(() => define(document.createElement('div'))).toThrow(TypeError);
+    expect(() => define(null)).toThrow(TypeError);
   });
 
-  it('rejects a name that is already defined', () => {
-    const { name } = component('<p></p>');
+  describe('root element', () => {
+    it('ignores whitespace and comments around it', () => {
+      expect(render('\n  <!-- card -->\n  <article></article>\n').tagName).toBe('ARTICLE');
+    });
 
-    expect(() => define(name, template('<p></p>'))).toThrow();
+    it('is checked when the class is defined', () => {
+      expect(() => define(template('<p></p><p></p>'))).toThrow(/found several/);
+      expect(() => define(template('   '))).toThrow(/found none/);
+      expect(() => define(template('Hello <p></p>'))).toThrow(/text outside/);
+      expect(() => define(template('<slot></slot>'))).toThrow(/must not be a <slot>/);
+    });
+  });
+
+  describe('new Component()', () => {
+    it('copies the props and slots it is given', () => {
+      const Component = define(template('<p>${name}</p>'));
+      const props = { name: 'Alex' };
+      const component = new Component({ props });
+
+      props.name = 'Sam';
+
+      expect(component.props).not.toBe(props);
+      expect(component.render().textContent).toBe('Alex');
+    });
+
+    it('works without options', () => {
+      const Component = define(template('<p>[${name}]<slot>fallback</slot></p>'));
+      const component = new Component();
+
+      expect(component.props).toEqual({});
+      expect(component.slots).toEqual({});
+      expect(component.render().textContent).toBe('[]fallback');
+    });
+
+    it('creates independent instances', () => {
+      const Component = define(template('<p>${name}</p>'));
+
+      const first = new Component({ props: { name: 'Alex' } }).render();
+      const second = new Component({ props: { name: 'Sam' } }).render();
+
+      expect(first).not.toBe(second);
+      expect(first.textContent).toBe('Alex');
+      expect(second.textContent).toBe('Sam');
+    });
+  });
+
+  describe('render()', () => {
+    it('returns a detached element in the template’s document', () => {
+      const element = render('<p></p>');
+
+      expect(element.parentNode).toBeNull();
+      expect(element.ownerDocument).toBe(document);
+    });
+
+    it('returns the same element on every call', () => {
+      const Component = define(template('<p>${name}</p>'));
+      const component = new Component();
+
+      expect(component.render()).toBe(component.render());
+    });
+
+    it('updates the element in place with the current props', () => {
+      const Component = define(template('<p class="${kind}">Hello, ${name}!</p>'));
+      const component = new Component({ props: { name: 'Alex', kind: 'a' } });
+      const element = component.render();
+      const text = element.firstChild;
+
+      component.props.name = 'Sam';
+      component.props.kind = 'b';
+      component.render();
+
+      expect(element.outerHTML).toBe('<p class="b">Hello, Sam!</p>');
+      expect(element.firstChild).toBe(text);
+    });
+
+    it('accepts a replaced props object', () => {
+      const Component = define(template('<p>${name}</p>'));
+      const component = new Component({ props: { name: 'Alex' } });
+
+      component.props = { name: 'Sam' };
+
+      expect(component.render().textContent).toBe('Sam');
+    });
+
+    it('writes only what changed', () => {
+      const Component = define(template('<p title="${a}">${a}<b>${b}</b></p>'));
+      const component = new Component({ props: { a: 1, b: 2 } });
+      const element = component.render();
+      const records = [];
+      const observer = new MutationObserver((list) => records.push(...list));
+      observer.observe(element, { subtree: true, attributes: true, characterData: true, childList: true });
+
+      component.props.b = 3;
+      component.render();
+      records.push(...observer.takeRecords());
+      observer.disconnect();
+
+      expect(records).toHaveLength(1);
+      expect(records[0].target.parentNode.tagName).toBe('B');
+    });
   });
 
   describe('props', () => {
-    it('replaces placeholders in text', () => {
-      const { Component } = component('<p>Hello, ${name}!</p>');
-
-      expect(new Component({ props: { name: 'Alex' } }).textContent).toBe('Hello, Alex!');
+    it('replace placeholders in text', () => {
+      expect(render('<p>Hello, ${name}!</p>', { props: { name: 'Alex' } }).textContent).toBe('Hello, Alex!');
     });
 
-    it('replaces placeholders in attribute values', () => {
-      const { Component } = component('<a href="/users/${id}" class="link ${kind}"></a>');
+    it('replace placeholders in attribute values', () => {
+      const element = render('<a href="/users/${id}" class="link ${kind}"></a>', {
+        props: { id: 42, kind: 'primary' },
+      });
 
-      const link = new Component({ props: { id: 42, kind: 'primary' } }).firstElementChild;
-
-      expect(link.getAttribute('href')).toBe('/users/42');
-      expect(link.getAttribute('class')).toBe('link primary');
+      expect(element.getAttribute('href')).toBe('/users/42');
+      expect(element.getAttribute('class')).toBe('link primary');
     });
 
-    it('replaces placeholders in nested elements', () => {
-      const { Component } = component('<ul><li><b>${a}</b></li><li title="${b}"></li></ul>');
+    it('replace placeholders in nested elements', () => {
+      const element = render('<ul><li><b>${a}</b></li><li title="${b}"></li></ul>', {
+        props: { a: 'first', b: 'second' },
+      });
 
-      expect(html(new Component({ props: { a: 'first', b: 'second' } }))).toBe(
-        '<ul><li><b>first</b></li><li title="second"></li></ul>',
-      );
+      expect(element.innerHTML).toBe('<li><b>first</b></li><li title="second"></li>');
     });
 
-    it('replaces every occurrence and allows whitespace inside braces', () => {
-      const { Component } = component('${ x }-${x}-${y}');
-
-      expect(new Component({ props: { x: 1, y: true } }).textContent).toBe('1-1-true');
+    it('replace every occurrence and allow whitespace inside braces', () => {
+      expect(render('<p>${ x }-${x}-${y}</p>', { props: { x: 1, y: true } }).textContent).toBe('1-1-true');
     });
 
-    it('stores props as attributes', () => {
-      const { Component } = component('${name}');
+    it('are inserted as text, not HTML', () => {
+      const element = render('<p>${html}</p>', { props: { html: '<b>bold</b>' } });
 
-      expect(new Component({ props: { name: 'Alex' } }).getAttribute('name')).toBe('Alex');
-    });
-
-    it('maps camelCase props to kebab-case attributes', () => {
-      const { name, Component } = component('<p>${firstName}</p>');
-
-      expect(customElements.get(name).observedAttributes).toEqual(['first-name']);
-      expect(new Component({ props: { firstName: 'Alex' } }).getAttribute('first-name')).toBe('Alex');
-      expect(mount(`<${name} first-name="Sam"></${name}>`).textContent).toBe('Sam');
-    });
-
-    it('sets props the template does not use as plain attributes', () => {
-      const { Component } = component('<p></p>');
-
-      const element = new Component({ props: { id: 'main', ariaLabel: 'Card' } });
-
-      expect(element.id).toBe('main');
-      expect(element.getAttribute('aria-label')).toBe('Card');
-    });
-
-    it('inserts values as text, not HTML', () => {
-      const { Component } = component('<p>${html}</p>');
-
-      const element = new Component({ props: { html: '<b>bold</b>' } });
-
-      expect(element.querySelector('b')).toBeNull();
+      expect(element.children).toHaveLength(0);
       expect(element.textContent).toBe('<b>bold</b>');
     });
 
-    it('does not expand replacement patterns or nested placeholders in values', () => {
-      const { Component } = component('<p>${a}</p>');
-
-      expect(new Component({ props: { a: "$& $' ${b}", b: 'no' } }).textContent).toBe("$& $' ${b}");
+    it('do not expand replacement patterns or nested placeholders', () => {
+      expect(render('<p>${a}</p>', { props: { a: "$& $' ${b}", b: 'no' } }).textContent).toBe("$& $' ${b}");
     });
 
-    it('accepts falsy values', () => {
-      const { Component } = component('${a}|${b}|${c}');
-
-      expect(new Component({ props: { a: 0, b: '', c: false } }).textContent).toBe('0||false');
+    it('accept falsy values', () => {
+      expect(render('<p>${a}|${b}|${c}</p>', { props: { a: 0, b: '', c: false } }).textContent).toBe('0||false');
     });
 
-    it('renders a missing prop as an empty string', () => {
-      const { Component } = component('<p title="[${a}]">[${a}]</p>');
+    it('render missing, undefined and null values as empty strings', () => {
+      const element = render('<p title="[${a}]">[${a}${b}${c}]</p>', { props: { b: undefined, c: null } });
 
-      const element = new Component({ props: { a: undefined } });
-
-      expect(element.hasAttribute('a')).toBe(false);
-      expect(html(element)).toBe('<p title="[]">[]</p>');
+      expect(element.outerHTML).toBe('<p title="[]">[]</p>');
     });
 
-    it('leaves text without placeholders alone', () => {
-      const { Component } = component('<p>$ {not} ${ } ${1x} ${$x}</p>');
-
-      expect(new Component({}).textContent).toBe('$ {not} ${ } ${1x} ${$x}');
+    it('ignore inherited properties', () => {
+      expect(render('<p>[${toString}]</p>').textContent).toBe('[]');
     });
 
-    describe('when attributes change', () => {
-      it('updates text and attribute values', () => {
-        const { Component } = component('<p class="${kind}">Hello, ${name}!</p>');
-        const element = new Component({ props: { name: 'Alex', kind: 'a' } });
-        const paragraph = element.firstElementChild;
-
-        element.setAttribute('name', 'Sam');
-        element.setAttribute('kind', 'b');
-
-        expect(element.firstElementChild).toBe(paragraph);
-        expect(html(element)).toBe('<p class="b">Hello, Sam!</p>');
-      });
-
-      it('keeps the other placeholders in the same text', () => {
-        const { Component } = component('${first} ${last}');
-        const element = new Component({ props: { first: 'Alex', last: 'Ivashkin' } });
-
-        element.setAttribute('first', 'Aleksandr');
-
-        expect(element.textContent).toBe('Aleksandr Ivashkin');
-      });
-
-      it('clears a placeholder when its attribute is removed', () => {
-        const { Component } = component('[${name}]');
-        const element = new Component({ props: { name: 'Alex' } });
-
-        element.removeAttribute('name');
-
-        expect(element.textContent).toBe('[]');
-      });
-
-      it('updates placeholders in fallback content', () => {
-        const { Component } = component('<slot>Hi, ${name}</slot>');
-        const element = new Component({ props: { name: 'Alex' } });
-
-        element.setAttribute('name', 'Sam');
-
-        expect(element.textContent).toBe('Hi, Sam');
-      });
-
-      it('applies attributes set before the element is rendered', () => {
-        const { name } = component('${name}');
-        const element = document.createElement(name);
-
-        element.setAttribute('name', 'early');
-        document.body.append(element);
-
-        expect(element.textContent).toBe('early');
-      });
+    it('leave text without placeholders alone', () => {
+      expect(render('<p>$ {not} ${ } ${1x}</p>').textContent).toBe('$ {not} ${ } ${1x}');
     });
   });
 
   describe('slots', () => {
-    it('fills the default slot with a node', () => {
-      const { Component } = component('<div class="box"><slot></slot></div>');
+    it('fill the default slot with a node', () => {
+      const element = render('<div class="box"><slot></slot></div>', { slots: { default: div('content') } });
 
-      expect(html(new Component({ slots: { default: div('content') } }))).toBe(
-        '<div class="box"><div>content</div></div>',
-      );
+      expect(element.outerHTML).toBe('<div class="box"><div>content</div><!----></div>');
     });
 
-    it('fills a named slot with an array of nodes', () => {
-      const { Component } = component('<header><slot name="title"></slot></header>');
+    it('fill a named slot with an array of nodes', () => {
+      const element = render('<header><slot name="title"></slot></header>', {
+        slots: { title: [div('a'), div('b')] },
+      });
 
-      expect(html(new Component({ slots: { title: [div('a'), div('b')] } }))).toBe(
-        '<header><div>a</div><div>b</div></header>',
-      );
+      expect(html(element)).toBe('<div>a</div><div>b</div>');
     });
 
-    it('fills a slot with a string as text', () => {
-      const { Component } = component('<p><slot></slot></p>');
+    it('fill a slot with a string as text', () => {
+      const element = render('<p><slot></slot></p>', { slots: { default: '<b>x</b>' } });
 
-      const element = new Component({ slots: { default: '<b>x</b>' } });
-
-      expect(element.querySelector('b')).toBeNull();
+      expect(element.children).toHaveLength(0);
       expect(element.textContent).toBe('<b>x</b>');
     });
 
-    it('fills a slot with a mix of nodes and strings', () => {
-      const { Component } = component('<p><slot></slot></p>');
+    it('fill a slot with a mix of nodes and strings', () => {
+      const element = render('<p><slot></slot></p>', { slots: { default: ['a', div('b'), 'c'] } });
 
-      expect(html(new Component({ slots: { default: ['a', div('b'), 'c'] } }))).toBe('<p>a<div>b</div>c</p>');
+      expect(html(element)).toBe('a<div>b</div>c');
     });
 
-    it('fills a slot with a live NodeList', () => {
-      const { Component } = component('<p><slot></slot></p>');
+    it('fill a slot with a live NodeList', () => {
       const source = document.createElement('div');
       source.innerHTML = '<i>1</i><i>2</i><i>3</i>';
 
-      expect(html(new Component({ slots: { default: source.childNodes } }))).toBe('<p><i>1</i><i>2</i><i>3</i></p>');
+      const element = render('<p><slot></slot></p>', { slots: { default: source.childNodes } });
+
+      expect(html(element)).toBe('<i>1</i><i>2</i><i>3</i>');
       expect(source.childNodes).toHaveLength(0);
     });
 
-    it('fills a slot with a DocumentFragment', () => {
-      const { Component } = component('<p><slot></slot></p>');
+    it('fill a slot with a DocumentFragment', () => {
       const fragment = document.createDocumentFragment();
       fragment.append(div('a'), div('b'));
 
-      expect(html(new Component({ slots: { default: fragment } }))).toBe('<p><div>a</div><div>b</div></p>');
+      const element = render('<p><slot></slot></p>', { slots: { default: fragment } });
+
+      expect(html(element)).toBe('<div>a</div><div>b</div>');
     });
 
-    it('moves the passed nodes rather than copying them', () => {
-      const { Component } = component('<p><slot></slot></p>');
+    it('move the passed nodes rather than copying them', () => {
       const child = div('moved');
 
-      const element = new Component({ slots: { default: child } });
+      const element = render('<p><slot></slot></p>', { slots: { default: child } });
 
-      expect(child.parentNode).toBe(element.firstElementChild);
+      expect(child.parentNode).toBe(element);
     });
 
-    it('fills several slots at once', () => {
-      const { Component } = component('<slot name="a"></slot>|<slot></slot>|<slot name="b"></slot>');
-
-      const element = new Component({ slots: { a: 'A', default: 'D', b: 'B' } });
+    it('fill several slots at once', () => {
+      const element = render('<div><slot name="a"></slot>|<slot></slot>|<slot name="b"></slot></div>', {
+        slots: { a: 'A', default: 'D', b: 'B' },
+      });
 
       expect(element.textContent).toBe('A|D|B');
       expect(element.querySelector('slot')).toBeNull();
     });
 
-    it('treats an empty name attribute as the default slot', () => {
-      const { Component } = component('<slot name=""></slot>');
-
-      expect(new Component({ slots: { default: 'x' } }).textContent).toBe('x');
+    it('treat an empty name attribute as the default slot', () => {
+      expect(render('<p><slot name=""></slot></p>', { slots: { default: 'x' } }).textContent).toBe('x');
     });
 
-    it('keeps fallback content when a slot is not filled', () => {
-      const { Component } = component('<p><slot name="icon"><i>★</i></slot></p>');
-
-      expect(html(new Component({}))).toBe('<p><i>★</i></p>');
+    it('keep fallback content when not filled', () => {
+      expect(html(render('<p><slot name="icon"><i>★</i></slot></p>'))).toBe('<i>★</i>');
     });
 
-    it('keeps fallback content when a slot is explicitly undefined', () => {
-      const { Component } = component('<p><slot>fallback</slot></p>');
-
-      expect(html(new Component({ slots: { default: undefined } }))).toBe('<p>fallback</p>');
+    it('keep fallback content when explicitly undefined', () => {
+      expect(html(render('<p><slot>fallback</slot></p>', { slots: { default: undefined } }))).toBe('fallback');
     });
 
-    it('interpolates fallback content', () => {
-      const { Component } = component('<slot>Hi, ${name}</slot>');
-
-      expect(new Component({ props: { name: 'Alex' } }).textContent).toBe('Hi, Alex');
+    it('interpolate fallback content', () => {
+      expect(render('<p><slot>Hi, ${name}</slot></p>', { props: { name: 'Alex' } }).textContent).toBe('Hi, Alex');
     });
 
-    it('does not interpolate slotted content', () => {
-      const { Component } = component('${name}<slot></slot>');
-
-      const element = new Component({ props: { name: 'Alex' }, slots: { default: div('${name}') } });
+    it('do not interpolate slotted content', () => {
+      const element = render('<p>${name}<slot></slot></p>', {
+        props: { name: 'Alex' },
+        slots: { default: div('${name}') },
+      });
 
       expect(html(element)).toBe('Alex<div>${name}</div>');
     });
 
-    it('resolves interpolated slot names', () => {
-      const { Component } = component('<slot name="${slot}"></slot>');
-
-      expect(new Component({ props: { slot: 'body' }, slots: { body: 'x' } }).textContent).toBe('x');
-    });
-
-    it('allows an empty array to clear a slot', () => {
-      const { Component } = component('<p><slot>fallback</slot></p>');
-
-      expect(html(new Component({ slots: { default: [] } }))).toBe('<p></p>');
-    });
-
-    it('throws for content passed to an unknown slot', () => {
-      const { Component } = component('<slot></slot>');
-
-      expect(() => new Component({ slots: { title: 'x' } })).toThrow(new TemplateError('Unknown slot "title"'));
-    });
-
-    it('throws when a slot name is declared twice', () => {
-      const { Component } = component('<slot></slot><slot></slot>');
-
-      expect(() => new Component({})).toThrow(/declared more than once/);
-    });
-
-    it('throws for unsupported slot content', () => {
-      const { Component } = component('<slot></slot>');
-
-      expect(() => new Component({ slots: { default: 42 } })).toThrow(TypeError);
-    });
-
-    describe('in HTML', () => {
-      it('assigns children by their slot attribute', () => {
-        const { name } = component('<h1><slot name="title"></slot></h1><main><slot></slot></main>');
-
-        const element = mount(`<${name}><b>body</b><span slot="title">Title</span> text</${name}>`);
-
-        expect(html(element)).toBe('<h1><span slot="title">Title</span></h1><main><b>body</b> text</main>');
+    it('resolve interpolated slot names', () => {
+      const element = render('<p><slot name="${slot}"></slot></p>', {
+        props: { slot: 'body' },
+        slots: { body: 'x' },
       });
 
-      it('ignores whitespace and comments, so fallback content still shows', () => {
-        const { name } = component('<slot>fallback</slot>|<slot name="x"></slot>');
+      expect(element.textContent).toBe('x');
+    });
 
-        const element = mount(`<${name}>\n  <!-- note -->\n  <i slot="x">x</i>\n</${name}>`);
+    it('can be emptied with an empty array', () => {
+      expect(html(render('<p><slot>fallback</slot></p>', { slots: { default: [] } }))).toBe('');
+    });
 
-        expect(html(element)).toBe('fallback|<i slot="x">x</i>');
+    it('throw for content passed to an unknown slot', () => {
+      expect(() => render('<p><slot></slot></p>', { slots: { title: 'x' } })).toThrow(
+        new TemplateError('Unknown slot "title"'),
+      );
+    });
+
+    it('throw when a slot name is declared twice', () => {
+      expect(() => render('<p><slot></slot><slot></slot></p>')).toThrow(/declared more than once/);
+    });
+
+    it('throw for unsupported content', () => {
+      expect(() => render('<p><slot></slot></p>', { slots: { default: 42 } })).toThrow(TypeError);
+    });
+
+    describe('on later renders', () => {
+      it('replace content that was reassigned', () => {
+        const Component = define(template('<div><header><slot name="title"></slot></header><slot></slot></div>'));
+        const component = new Component({ slots: { title: 'Old', default: div('body') } });
+        const element = component.render();
+        const header = element.firstElementChild;
+
+        component.slots.title = [div('a'), 'b'];
+        component.render();
+
+        expect(element.firstElementChild).toBe(header);
+        expect(html(element)).toBe('<header><div>a</div>b</header><div>body</div>');
       });
 
-      it('keeps the original children when a child targets an unknown slot', () => {
-        const { name } = component('<slot></slot>');
-        const element = document.createElement(name);
-        element.innerHTML = '<i slot="nope">x</i>';
+      it('can be replaced again and again', () => {
+        const Component = define(template('<p><slot></slot></p>'));
+        const component = new Component();
+        const element = component.render();
 
-        // Called directly: browsers report errors thrown from lifecycle
-        // callbacks instead of rethrowing them, and happy-dom rethrows.
-        expect(() => element.connectedCallback()).toThrow(new TemplateError('Unknown slot "nope"'));
-        expect(html(element)).toBe('<i slot="nope">x</i>');
+        for (const value of ['one', [], 'three']) {
+          component.slots.default = value;
+          component.render();
+        }
+
+        expect(html(element)).toBe('three');
       });
-    });
-  });
 
-  describe('new Component()', () => {
-    it('renders right away when given options', () => {
-      const { Component } = component('<p>${name}</p>');
+      it('bring back fallback content for undefined or delete', () => {
+        const Component = define(template('<div><p><slot>Hi, ${name}</slot></p><i><slot name="x">x</slot></i></div>'));
+        const component = new Component({ props: { name: 'Alex' }, slots: { default: 'custom', x: 'X' } });
+        const element = component.render();
 
-      expect(html(new Component({ props: { name: 'Alex' } }))).toBe('<p>Alex</p>');
-    });
+        component.slots.default = undefined;
+        delete component.slots.x;
+        component.props.name = 'Sam';
+        component.render();
 
-    it('renders on connection when given no options', () => {
-      const { Component } = component('<p>${name}</p>');
-      const element = new Component();
-      element.props.name = 'Alex';
+        expect(html(element)).toBe('<p>Hi, Sam</p><i>x</i>');
+      });
 
-      expect(element.innerHTML).toBe('');
-      document.body.append(element);
+      it('leave a slot alone while its value stays the same', () => {
+        const Component = define(template('<p><slot></slot></p>'));
+        const child = div('a');
+        const fragment = document.createDocumentFragment();
+        fragment.append(child);
+        const component = new Component({ slots: { default: fragment } });
+        const element = component.render();
 
-      expect(html(element)).toBe('<p>Alex</p>');
-    });
-  });
+        component.render();
 
-  describe('element.props', () => {
-    it('reads attributes by camelCase name', () => {
-      const { Component } = component('${firstName}');
-      const element = new Component({ props: { firstName: 'Alex', count: 3 } });
+        expect(child.parentNode).toBe(element);
+      });
 
-      expect(element.props.firstName).toBe('Alex');
-      expect(element.props.count).toBe('3');
-      expect(element.props.missing).toBeUndefined();
-      expect('firstName' in element.props).toBe(true);
-      expect('missing' in element.props).toBe(false);
-    });
+      it('do not notice an array changed in place', () => {
+        const Component = define(template('<p><slot></slot></p>'));
+        const items = ['a'];
+        const component = new Component({ slots: { default: items } });
+        const element = component.render();
 
-    it('updates the rendered element when written', () => {
-      const { Component } = component('<p title="${firstName}">${firstName}</p>');
-      const element = new Component({ props: { firstName: 'Alex' } });
+        items.push('b');
+        component.render();
+        expect(element.textContent).toBe('a');
 
-      element.props.firstName = 'Sam';
+        component.slots.default = [...items];
+        component.render();
+        expect(element.textContent).toBe('ab');
+      });
 
-      expect(element.getAttribute('first-name')).toBe('Sam');
-      expect(html(element)).toBe('<p title="Sam">Sam</p>');
-    });
+      it('leave nodes moved elsewhere where they are', () => {
+        const Component = define(template('<p><slot></slot></p>'));
+        const child = div('moved');
+        const component = new Component({ slots: { default: child } });
+        const element = component.render();
+        const elsewhere = document.createElement('section');
 
-    it('removes the attribute for undefined, null, or delete', () => {
-      const { Component } = component('[${a}${b}${c}]');
-      const element = new Component({ props: { a: 1, b: 2, c: 3 } });
+        elsewhere.append(child);
+        component.slots.default = 'new';
+        component.render();
 
-      element.props.a = undefined;
-      element.props.b = null;
-      delete element.props.c;
+        expect(child.parentNode).toBe(elsewhere);
+        expect(html(element)).toBe('new');
+      });
 
-      expect(element.hasAttribute('a') || element.hasAttribute('b') || element.hasAttribute('c')).toBe(false);
-      expect(element.textContent).toBe('[]');
-    });
+      it('leave the element untouched when the update is invalid', () => {
+        const Component = define(template('<p>${name}<slot></slot></p>'));
+        const component = new Component({ props: { name: 'Alex' }, slots: { default: 'x' } });
+        const element = component.render();
 
-    it('reads symbol keys as undefined', () => {
-      const { Component } = component('');
+        component.props.name = 'Sam';
+        component.slots.default = 'y';
+        component.slots.nope = 'z';
 
-      expect(new Component({}).props[Symbol.toStringTag]).toBeUndefined();
-    });
-  });
-
-  describe('element.slots', () => {
-    it('replaces slot content in place', () => {
-      const { Component } = component('<header><slot name="title"></slot></header><main><slot></slot></main>');
-      const element = new Component({ slots: { title: 'Old', default: div('body') } });
-      const header = element.firstElementChild;
-
-      element.slots.title = [div('a'), 'b'];
-
-      expect(element.firstElementChild).toBe(header);
-      expect(html(element)).toBe('<header><div>a</div>b</header><main><div>body</div></main>');
-    });
-
-    it('can be replaced again and again', () => {
-      const { Component } = component('<p><slot></slot></p>');
-      const element = new Component({});
-
-      element.slots.default = 'one';
-      element.slots.default = [];
-      element.slots.default = 'three';
-
-      expect(html(element)).toBe('<p>three</p>');
-    });
-
-    it('restores fallback content for undefined or delete', () => {
-      const { Component } = component('<p><slot>Hi, ${name}</slot></p><i><slot name="x">x</slot></i>');
-      const element = new Component({ props: { name: 'Alex' }, slots: { default: 'custom', x: 'X' } });
-
-      element.slots.default = undefined;
-      delete element.slots.x;
-      element.props.name = 'Sam';
-
-      expect(html(element)).toBe('<p>Hi, Sam</p><i>x</i>');
-    });
-
-    it('reads the assigned nodes, or undefined while the fallback shows', () => {
-      const { Component } = component('<slot></slot><slot name="x">fallback</slot>');
-      const child = div('a');
-      const element = new Component({ slots: { default: [child, 'b'] } });
-
-      expect(element.slots.default).toHaveLength(2);
-      expect(element.slots.default[0]).toBe(child);
-      expect(element.slots.default[1].data).toBe('b');
-      expect(element.slots.x).toBeUndefined();
-      expect('x' in element.slots).toBe(true);
-      expect('nope' in element.slots).toBe(false);
-    });
-
-    it('leaves nodes moved elsewhere where they are', () => {
-      const { Component } = component('<slot></slot>');
-      const child = div('moved');
-      const element = new Component({ slots: { default: child } });
-      const elsewhere = document.createElement('section');
-
-      elsewhere.append(child);
-      element.slots.default = 'new';
-
-      expect(child.parentNode).toBe(elsewhere);
-      expect(html(element)).toBe('new');
-    });
-
-    it('throws for an unknown slot', () => {
-      const { Component } = component('<slot></slot>');
-      const element = new Component({});
-
-      expect(() => {
-        element.slots.nope = 'x';
-      }).toThrow(new TemplateError('Unknown slot "nope"'));
-    });
-
-    it('applies content assigned before rendering, over the children', () => {
-      const { name } = component('<p><slot></slot></p><i><slot name="x"></slot></i>');
-      const element = document.createElement(name);
-      element.innerHTML = '<b>child</b><u slot="x">x</u>';
-
-      element.slots.default = 'assigned';
-      expect(element.slots.default).toBe('assigned');
-      document.body.append(element);
-
-      expect(html(element)).toBe('<p>assigned</p><i><u slot="x">x</u></i>');
+        expect(() => component.render()).toThrow(new TemplateError('Unknown slot "nope"'));
+        expect(html(element)).toBe('Alexx');
+      });
     });
   });
 
   it('matches the documented example', () => {
     const element1 = div('one');
     const element2 = div('two');
-    const { Component } = component(`
-      <h1>Hello, \${name}!</h1>
-      <main><slot></slot></main>
-      <footer><slot name="another"></slot></footer>
-    `);
+    const Greeting = define(template(`
+      <div class="greeting">
+        <h1>Hello, \${name}!</h1>
+        <main><slot></slot></main>
+        <footer><slot name="another"></slot></footer>
+      </div>
+    `));
 
-    const element = new Component({
+    const greeting = new Greeting({
       slots: {
         default: document.createElement('div'),
         another: [element1, element2],
@@ -580,9 +455,13 @@ describe('define', () => {
         name: 'Alex',
       },
     });
+    const element = greeting.render();
 
     expect(element.querySelector('h1').textContent).toBe('Hello, Alex!');
     expect(html(element.querySelector('main'))).toBe('<div></div>');
     expect(html(element.querySelector('footer'))).toBe('<div>one</div><div>two</div>');
+
+    greeting.props.name = 'Sam';
+    expect(greeting.render().querySelector('h1').textContent).toBe('Hello, Sam!');
   });
 });

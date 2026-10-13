@@ -1,18 +1,24 @@
 /**
- * The slot name used for `<slot>` elements without a `name` attribute, and
- * for children without a `slot` attribute.
+ * The slot name used for `<slot>` elements without a `name` attribute.
  */
 const DEFAULT_SLOT = 'default';
 
 /**
- * Matches `${name}` placeholders. Whitespace inside the braces is allowed.
- * Names are limited to characters that are also valid in attribute names.
+ * Matches `${name}` placeholders. Whitespace inside the braces is allowed,
+ * and the name follows the rules of a JavaScript identifier.
  */
-const PLACEHOLDER = /\$\{\s*([A-Za-z_]\w*)\s*\}/g;
+const PLACEHOLDER = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
 
 /**
- * Thrown when a component cannot be rendered: content is passed to a slot
- * the template does not declare, or a slot name is declared twice.
+ * Marks a slot that has not been filled yet, so the first render fills
+ * every slot, including the ones left to their fallback.
+ */
+const UNFILLED = Symbol('unfilled');
+
+/**
+ * Thrown when a template cannot be rendered: it does not have exactly one
+ * root element, content is passed to a slot it does not declare, or a slot
+ * name is declared twice.
  */
 export class TemplateError extends Error {
   constructor(message) {
@@ -22,197 +28,122 @@ export class TemplateError extends Error {
 }
 
 /**
- * Registers a custom element rendered from a `<template>` and returns its
- * class.
+ * Turns a `<template>` into a component class.
  *
- * Every `${propName}` in the template's text and attribute values shows the
- * element's `prop-name` attribute and follows its changes. Every `<slot>` is
- * replaced with the matching children of the element, or with its own
- * fallback children when there are none. The template is copied at
- * definition time, so later changes to it have no effect.
+ * An instance holds `props` and `slots`; `render()` returns the rendered
+ * element. The first call builds it, later calls update the same element in
+ * place with the current `props` and `slots`. The template is copied here,
+ * so later changes to it have no effect.
  *
- * @param {string} name A valid custom element name, e.g. `user-card`.
  * @param {HTMLTemplateElement} template
- * @returns {typeof HTMLElement}
  */
-export function define(name, template) {
+export function define(template) {
   if (template?.tagName !== 'TEMPLATE') {
     throw new TypeError('define() expects a <template> element');
   }
 
   const document = template.ownerDocument;
   const content = template.content.cloneNode(true);
-  const propsByAttribute = new Map(
-    [...collectProps(content)].map((prop) => [toAttribute(prop), prop]),
-  );
+  findRoot(content);
 
-  class Component extends HTMLElement {
-    static observedAttributes = [...propsByAttribute.keys()];
+  return class Component {
+    /**
+     * Values for `${name}` placeholders. Read on every `render()`.
+     * @type {Record<string, unknown>}
+     */
+    props;
 
-    // Text and attribute values to update when attributes change; null until
-    // the element is rendered.
-    #bindings = null;
+    /**
+     * Content for each slot, by slot name. Read on every `render()`; a slot
+     * is refilled only when its value is no longer the same (`Object.is`).
+     * @type {Record<string, unknown>}
+     */
+    slots;
 
-    // Rendered slots by name.
+    #element = null;
+    #bindings = [];
     #slots = new Map();
 
-    // Slot content assigned before the element is rendered.
-    #pendingSlots = {};
-
-    // Symbol keys, such as the ones console.log and util.inspect probe,
-    // have no attribute and read as undefined.
-    #props = new Proxy({}, {
-      get: (_, prop) => (typeof prop === 'string' ? this.getAttribute(toAttribute(prop)) ?? undefined : undefined),
-      has: (_, prop) => typeof prop === 'string' && this.hasAttribute(toAttribute(prop)),
-      set: (_, prop, value) => {
-        if (value == null) {
-          this.removeAttribute(toAttribute(prop));
-        } else {
-          this.setAttribute(toAttribute(prop), String(value));
-        }
-        return true;
-      },
-      deleteProperty: (_, prop) => {
-        this.removeAttribute(toAttribute(prop));
-        return true;
-      },
-    });
-
-    #slotsProxy = new Proxy({}, {
-      get: (_, name) => (this.#bindings ? this.#slots.get(name)?.assigned : this.#pendingSlots[name]),
-      has: (_, name) => (this.#bindings ? this.#slots.has(name) : name in this.#pendingSlots),
-      set: (_, name, value) => {
-        this.#assignSlot(name, value);
-        return true;
-      },
-      deleteProperty: (_, name) => {
-        this.#assignSlot(name, undefined);
-        return true;
-      },
-    });
-
-    /**
-     * Created with options, the element is rendered right away. Created
-     * without them — by the HTML parser, `document.createElement`, or
-     * `new` with no arguments — it renders when first connected.
-     */
-    constructor(options) {
-      super();
-      if (options === undefined) return;
-
-      const { props = {}, slots = {} } = options;
-      Object.assign(this.#props, props);
-      this.#pendingSlots = { ...slots };
-      this.#render();
+    constructor({ props = {}, slots = {} } = {}) {
+      this.props = { ...props };
+      this.slots = { ...slots };
     }
 
     /**
-     * The element's attributes, read and written by camelCase prop name.
-     * Values are stored as strings; `undefined` or `null` removes the
-     * attribute.
+     * Returns the rendered element, updated with the current `props` and
+     * `slots`. Every call returns the same element.
+     *
+     * @returns {Element}
      */
-    get props() {
-      return this.#props;
+    render() {
+      if (!this.#element) this.#mount();
+      this.#update();
+      return this.#element;
     }
 
-    /**
-     * The content of each slot, by slot name. Assigning replaces the slot's
-     * content in place; `undefined` restores its fallback children. Reading
-     * returns the assigned nodes, or `undefined` while the fallback shows.
-     */
-    get slots() {
-      return this.#slotsProxy;
-    }
-
-    connectedCallback() {
-      // An element in the page's own HTML is connected as soon as its start
-      // tag is parsed, before its children are. Waiting for the document to
-      // finish parsing gives the slots their content.
-      if (this.ownerDocument.readyState === 'loading') {
-        this.ownerDocument.addEventListener('DOMContentLoaded', () => this.#render(), { once: true });
-      } else {
-        this.#render();
-      }
-    }
-
-    attributeChangedCallback(attribute) {
-      const prop = propsByAttribute.get(attribute);
-
-      for (const binding of this.#bindings ?? []) {
-        if (binding.props.has(prop)) apply(binding, this);
-      }
-    }
-
-    #render() {
-      if (this.#bindings) return;
-
-      const assigned = { ...slotsFromChildren(this), ...this.#pendingSlots };
-
+    #mount() {
       // importNode, unlike cloneNode, adopts the nodes into the document, so
       // custom elements inside the template get upgraded.
       const fragment = document.importNode(content, true);
       const bindings = bind(fragment);
 
       // Interpolate first, so slot names may use placeholders.
-      for (const binding of bindings) apply(binding, this);
+      for (const binding of bindings) apply(binding, this.props);
       const slots = mountSlots(fragment);
 
-      for (const name of Object.keys(assigned)) {
-        if (assigned[name] !== undefined && !slots.has(name)) {
+      this.#element = findRoot(fragment);
+      this.#element.remove();
+      this.#bindings = bindings;
+      this.#slots = slots;
+    }
+
+    #update() {
+      for (const name of Object.keys(this.slots)) {
+        if (this.slots[name] !== undefined && !this.#slots.has(name)) {
           throw new TemplateError(`Unknown slot "${name}"`);
         }
       }
 
-      // Resolve all content before moving anything, so invalid content
-      // leaves the element untouched.
-      const nodes = new Map([...slots.keys()].map((name) => [name, toNodes(assigned[name])]));
-
-      for (const [name, slot] of slots) fillSlot(slot, nodes.get(name));
-
-      this.replaceChildren(fragment);
-      this.#bindings = bindings;
-      this.#slots = slots;
-      this.#pendingSlots = {};
-    }
-
-    #assignSlot(name, value) {
-      if (!this.#bindings) {
-        this.#pendingSlots[name] = value;
-        return;
+      // Resolve all changed content before touching the element, so invalid
+      // content leaves it as it was.
+      const changes = [];
+      for (const [name, slot] of this.#slots) {
+        const value = this.slots[name];
+        if (!Object.is(value, slot.value)) changes.push([slot, value, toNodes(value)]);
       }
 
-      const slot = this.#slots.get(name);
-      if (!slot) {
-        if (value === undefined) return;
-        throw new TemplateError(`Unknown slot "${name}"`);
-      }
-
-      fillSlot(slot, toNodes(value));
+      for (const binding of this.#bindings) apply(binding, this.props);
+      for (const [slot, value, nodes] of changes) fillSlot(slot, value, nodes);
     }
-  }
-
-  customElements.define(name, Component);
-  return Component;
+  };
 }
 
 /**
- * Converts a camelCase prop name to its kebab-case attribute name.
+ * Returns the single root element of `fragment`. Whitespace and comments
+ * around the root are ignored.
  */
-function toAttribute(prop) {
-  return prop.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-}
+function findRoot(fragment) {
+  let root = null;
 
-/**
- * Returns the names of all placeholders used under `root`.
- */
-function collectProps(root) {
-  const props = new Set();
-
-  for (const binding of bind(root)) {
-    for (const prop of binding.props) props.add(prop);
+  for (const node of fragment.childNodes) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (root) {
+        throw new TemplateError('Template must have exactly one root element, found several');
+      }
+      root = node;
+    } else if (node.nodeType === Node.TEXT_NODE && node.data.trim() !== '') {
+      throw new TemplateError('Template must not have text outside its root element');
+    }
   }
 
-  return props;
+  if (!root) {
+    throw new TemplateError('Template must have exactly one root element, found none');
+  }
+  if (root.localName === 'slot') {
+    throw new TemplateError('Template root element must not be a <slot>');
+  }
+
+  return root;
 }
 
 /**
@@ -238,45 +169,26 @@ function bind(root) {
 }
 
 function addBinding(bindings, node, attribute, source) {
-  const props = new Set(Array.from(source.matchAll(PLACEHOLDER), ([, prop]) => prop));
-  if (props.size > 0) bindings.push({ node, attribute, source, props });
+  PLACEHOLDER.lastIndex = 0;
+  if (PLACEHOLDER.test(source)) bindings.push({ node, attribute, source });
 }
 
 /**
- * Re-renders a binding with the element's current attribute values. Values
- * are inserted as plain text, never parsed as HTML. A missing attribute
- * renders as an empty string, the same as an empty attribute.
+ * Renders a binding with the current props, writing to the DOM only when the
+ * text changed. Values are inserted as plain text, never parsed as HTML;
+ * a missing, `undefined` or `null` prop renders as an empty string.
  */
-function apply({ node, attribute, source }, element) {
-  const value = source.replace(
-    PLACEHOLDER,
-    (_, prop) => element.getAttribute(toAttribute(prop)) ?? '',
-  );
+function apply({ node, attribute, source }, props) {
+  const value = source.replace(PLACEHOLDER, (_, name) => {
+    const prop = Object.hasOwn(props, name) ? props[name] : undefined;
+    return String(prop ?? '');
+  });
 
   if (attribute) {
-    node.setAttribute(attribute, value);
-  } else {
+    if (node.getAttribute(attribute) !== value) node.setAttribute(attribute, value);
+  } else if (node.data !== value) {
     node.data = value;
   }
-}
-
-/**
- * Groups the element's children by their `slot` attribute, the same way
- * native Shadow DOM assigns them. Whitespace-only text and comments are
- * left out, so formatting in HTML does not hide a slot's fallback content.
- */
-function slotsFromChildren(element) {
-  const slots = {};
-
-  for (const node of element.childNodes) {
-    if (node.nodeType === Node.COMMENT_NODE) continue;
-    if (node.nodeType === Node.TEXT_NODE && node.data.trim() === '') continue;
-
-    const name = (node.nodeType === Node.ELEMENT_NODE && node.getAttribute('slot')) || DEFAULT_SLOT;
-    (slots[name] ??= []).push(node);
-  }
-
-  return slots;
 }
 
 /**
@@ -297,7 +209,7 @@ function mountSlots(root) {
     const fallback = [...element.childNodes];
     element.replaceWith(marker);
 
-    slots.set(name, { marker, fallback, shown: [], assigned: undefined });
+    slots.set(name, { marker, fallback, shown: [], value: UNFILLED });
   }
 
   return slots;
@@ -308,7 +220,7 @@ function mountSlots(root) {
  * fallback when `nodes` is undefined — the same fallback rule as native
  * Shadow DOM slots.
  */
-function fillSlot(slot, nodes) {
+function fillSlot(slot, value, nodes) {
   const shown = nodes ?? slot.fallback;
 
   // Nodes moved elsewhere since they were slotted are left where they are.
@@ -318,7 +230,7 @@ function fillSlot(slot, nodes) {
 
   slot.marker.before(...shown);
   slot.shown = shown;
-  slot.assigned = nodes && [...nodes];
+  slot.value = value;
 }
 
 /**
