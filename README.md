@@ -99,7 +99,7 @@ An element renders once: when created with options, or when first connected to t
 
 ## Example
 
-[`example/index.html`](example/index.html) shows a component used in HTML, updated through `props` and `slots`, and created with `new`. Serve the repository root with any static server and open `/example/`:
+[`example/index.html`](example/index.html) shows metric tiles written in HTML and updated through `props` every second. Serve the repository root with any static server and open `/example/`:
 
 ```sh
 npx serve .

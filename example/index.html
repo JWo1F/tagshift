@@ -41,60 +41,30 @@
 
     main { max-width: 760px; margin: 0 auto; }
     h1 { margin: 0 0 8px; font-size: 28px; }
-    h2 { margin: 48px 0 4px; font-size: 18px; }
-    p.lead, p.note { margin: 0; color: var(--muted); }
-    p.note { margin-bottom: 12px; font-size: 14px; }
+    p.lead { margin: 0 0 16px; color: var(--muted); }
     code { font-size: 14px; }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-    }
+    .controls { margin-bottom: 12px; }
 
-    .grid--tiles { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-
-    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .controls .spacer { flex: 1; }
-
-    input, select, button {
+    button {
       font: inherit;
       padding: 6px 10px;
       border: 1px solid var(--border);
       border-radius: 6px;
       background: var(--surface);
       color: var(--text);
+      cursor: pointer;
     }
 
-    input { min-width: 0; }
-    button { cursor: pointer; }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-
-    /* Components render into light DOM, so page styles reach them. */
-    user-card, stat-tile, todo-item { display: block; }
-    todo-item[hidden] { display: none; }
-
-    /* <user-card> */
-    .card {
-      height: 100%;
-      padding: 16px;
-      border: 1px solid var(--border);
-      border-left: 4px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
     }
 
-    .card--admin { border-left-color: var(--accent); }
-    .card h3 { margin: 0; font-size: 17px; }
-    .card .role { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
-    .card .body { min-height: 24px; }
-    .card .body ul { margin: 0; padding-left: 20px; }
-    .card .empty { color: var(--muted); font-style: italic; }
-    .card footer { display: flex; gap: 8px; margin-top: 12px; }
-    .card footer:empty { display: none; }
+    /* The component renders into light DOM, so page styles reach it. */
+    stat-tile { display: block; }
 
-    /* <stat-tile> */
     .tile {
       padding: 12px 14px;
       border: 1px solid var(--border);
@@ -110,36 +80,9 @@
     .tile--down .delta { color: var(--down); }
     .tile .bar { height: 4px; margin-top: 8px; border-radius: 2px; background: var(--border); overflow: hidden; }
     .tile .fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
-
-    /* <todo-item> */
-    .todos { display: grid; gap: 6px; }
-
-    .todo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
-    }
-
-    .todo .title { flex: 1; }
-    .todo .age { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-    .todo .actions { display: flex; gap: 6px; }
-    .todo--done .title { color: var(--muted); text-decoration: line-through; }
   </style>
 </head>
 <body>
-  <template id="user-card">
-    <article class="card card--${role}" title="${firstName} ${lastName}">
-      <h3>${firstName} ${lastName}</h3>
-      <p class="role">${role}</p>
-      <div class="body"><slot><span class="empty">No bio yet</span></slot></div>
-      <footer><slot name="actions"></slot></footer>
-    </article>
-  </template>
-
   <template id="stat-tile">
     <div class="tile tile--${trend}">
       <span class="label">${label}</span>
@@ -149,106 +92,27 @@
     </div>
   </template>
 
-  <template id="todo-item">
-    <div class="todo todo--${state}">
-      <span class="title">${title}</span>
-      <span class="age">${age}</span>
-      <span class="actions"><slot name="actions"></slot></span>
-    </div>
-  </template>
-
-  <template id="todo-summary">
-    <span>${open} open · ${done} done</span>
-  </template>
-
   <main>
     <h1>tagshift</h1>
-    <p class="lead">Templates registered as <code>&lt;user-card&gt;</code>, <code>&lt;stat-tile&gt;</code> and <code>&lt;todo-item&gt;</code>.</p>
+    <p class="lead">Every second each <code>&lt;stat-tile&gt;</code> gets new <code>props</code>: text, a class and an inline style update in place.</p>
 
-    <h2>Written in HTML</h2>
-    <p class="note">Children land in slots by their <code>slot</code> attribute; an empty slot shows its fallback.</p>
-    <div class="grid">
-      <user-card first-name="Ada" last-name="Lovelace" role="admin">
-        <p>Wrote the first published algorithm.</p>
-        <button slot="actions">Follow</button>
-        <button slot="actions">Message</button>
-      </user-card>
-
-      <user-card first-name="Alan" last-name="Turing" role="member"></user-card>
-    </div>
-
-    <h2>Live props</h2>
-    <p class="note">Every second each tile gets new <code>props</code>: text, a class and an inline style update in place.</p>
     <div class="controls">
       <button id="pause">Pause</button>
     </div>
-    <div class="grid grid--tiles">
+    <div class="grid">
       <stat-tile id="cpu" label="CPU" unit="%"></stat-tile>
       <stat-tile id="memory" label="Memory" unit="%"></stat-tile>
       <stat-tile id="requests" label="Requests" unit="/s"></stat-tile>
       <stat-tile id="latency" label="Latency" unit="ms"></stat-tile>
     </div>
-
-    <h2>Live slots</h2>
-    <p class="note">The fields write <code>props</code>; the buttons swap what <code>slots</code> hold.</p>
-    <div class="controls">
-      <input id="first-name" value="Grace" aria-label="First name">
-      <select id="role" aria-label="Role">
-        <option>member</option>
-        <option>admin</option>
-      </select>
-      <span class="spacer"></span>
-      <button data-bio="text" aria-pressed="true">Text bio</button>
-      <button data-bio="list" aria-pressed="false">List bio</button>
-      <button data-bio="none" aria-pressed="false">Fallback</button>
-    </div>
-    <div class="grid">
-      <user-card id="grace" first-name="Grace" last-name="Hopper" role="member">
-        <p>Popularized machine-independent programming languages.</p>
-      </user-card>
-    </div>
-
-    <h2>Created with <code>new</code></h2>
-    <p class="note">Each task is <code>new TodoItem()</code>. Marking it done writes <code>props.state</code> and swaps its buttons; the summary above the list is a component too.</p>
-    <form id="todo-form" class="controls">
-      <input id="todo-title" placeholder="What needs doing?" aria-label="Task" required>
-      <button class="primary">Add</button>
-      <span class="spacer"></span>
-      <todo-summary id="summary" open="0" done="0"></todo-summary>
-    </form>
-    <div class="controls">
-      <button data-filter="all" aria-pressed="true">All</button>
-      <button data-filter="open" aria-pressed="false">Open</button>
-      <button data-filter="done" aria-pressed="false">Done</button>
-    </div>
-    <div id="todos" class="todos"></div>
-
-    <h2>Many at once</h2>
-    <p class="note">Cards created with <code>new UserCard()</code>, each with its own slot content.</p>
-    <div class="controls">
-      <button id="add-card" class="primary">Add a card</button>
-    </div>
-    <div id="cards" class="grid"></div>
   </main>
 
   <script type="module">
     import { define } from '../src/index.js';
 
-    const UserCard = define('user-card', document.getElementById('user-card'));
     define('stat-tile', document.getElementById('stat-tile'));
-    const TodoItem = define('todo-item', document.getElementById('todo-item'));
-    define('todo-summary', document.getElementById('todo-summary'));
 
-    function button(text, onClick) {
-      const element = document.createElement('button');
-      element.type = 'button';
-      element.textContent = text;
-      element.addEventListener('click', onClick);
-      return element;
-    }
-
-    // Live props: a random walk per metric, written to the tiles every second.
-
+    // A random walk per metric, written to the tiles every second.
     const metrics = [
       { tile: document.getElementById('cpu'), value: 35, min: 0, max: 100, step: 12 },
       { tile: document.getElementById('memory'), value: 62, min: 0, max: 100, step: 4 },
@@ -283,140 +147,6 @@
         timer = setInterval(tick, 1000);
       }
       event.target.textContent = timer ? 'Pause' : 'Resume';
-    });
-
-    // Live slots: the fields write props, the buttons swap the bio slot and
-    // the follow button swaps itself.
-
-    const grace = document.getElementById('grace');
-
-    const bios = {
-      text: grace.slots.default,
-      list: (() => {
-        const list = document.createElement('ul');
-        list.innerHTML = '<li>Harvard Mark I</li><li>UNIVAC I</li><li>COBOL</li>';
-        return list;
-      })(),
-      none: undefined,
-    };
-
-    for (const control of document.querySelectorAll('[data-bio]')) {
-      control.addEventListener('click', () => {
-        // undefined brings back the slot's fallback content.
-        grace.slots.default = bios[control.dataset.bio];
-        for (const other of document.querySelectorAll('[data-bio]')) {
-          other.setAttribute('aria-pressed', String(other === control));
-        }
-      });
-    }
-
-    const follow = button('Follow', () => (grace.slots.actions = unfollow));
-    const unfollow = button('Following ✓', () => (grace.slots.actions = follow));
-    grace.slots.actions = follow;
-
-    document.getElementById('first-name').addEventListener('input', (event) => {
-      grace.props.firstName = event.target.value;
-    });
-    document.getElementById('role').addEventListener('change', (event) => {
-      grace.props.role = event.target.value;
-    });
-
-    // Created with new: a task list with live ages, states and filters.
-
-    const todos = document.getElementById('todos');
-    const summary = document.getElementById('summary');
-    let filter = 'all';
-
-    function addTodo(title, createdAt = Date.now()) {
-      const item = new TodoItem({
-        props: { title, state: 'open', age: formatAge(createdAt) },
-      });
-      item.createdAt = createdAt;
-
-      const complete = button('Done', () => setState('done'));
-      const reopen = button('Reopen', () => setState('open'));
-      const remove = button('Remove', () => {
-        item.remove();
-        refresh();
-      });
-
-      function setState(state) {
-        item.props.state = state;
-        item.slots.actions = [state === 'open' ? complete : reopen, remove];
-        refresh();
-      }
-
-      setState('open');
-      todos.prepend(item);
-      refresh();
-    }
-
-    function refresh() {
-      const items = [...todos.children];
-      const done = items.filter((item) => item.props.state === 'done').length;
-
-      summary.props.open = items.length - done;
-      summary.props.done = done;
-
-      for (const item of items) {
-        item.hidden = filter !== 'all' && item.props.state !== filter;
-      }
-    }
-
-    function formatAge(createdAt) {
-      const seconds = Math.round((Date.now() - createdAt) / 1000);
-      if (seconds < 5) return 'just now';
-      if (seconds < 60) return `${seconds}s ago`;
-      return `${Math.floor(seconds / 60)}m ago`;
-    }
-
-    setInterval(() => {
-      for (const item of todos.children) item.props.age = formatAge(item.createdAt);
-    }, 1000);
-
-    document.getElementById('todo-form').addEventListener('submit', (event) => {
-      event.preventDefault();
-      const input = document.getElementById('todo-title');
-      addTodo(input.value.trim());
-      input.value = '';
-    });
-
-    for (const control of document.querySelectorAll('[data-filter]')) {
-      control.addEventListener('click', () => {
-        filter = control.dataset.filter;
-        for (const other of document.querySelectorAll('[data-filter]')) {
-          other.setAttribute('aria-pressed', String(other === control));
-        }
-        refresh();
-      });
-    }
-
-    addTodo('Write the README', Date.now() - 125_000);
-    addTodo('Publish to npm', Date.now() - 40_000);
-    addTodo('Try tagshift in a real project');
-
-    // Many at once: each card gets its own slot content and remove button.
-
-    const people = [
-      ['Linus', 'Torvalds', 'member'],
-      ['Margaret', 'Hamilton', 'admin'],
-      ['Dennis', 'Ritchie', 'member'],
-      ['Barbara', 'Liskov', 'admin'],
-    ];
-    let count = 0;
-
-    document.getElementById('add-card').addEventListener('click', () => {
-      const [firstName, lastName, role] = people[count++ % people.length];
-
-      const card = new UserCard({
-        props: { firstName, lastName, role },
-        slots: {
-          default: `Card #${count}, created with new UserCard().`,
-          actions: button('Remove', () => card.remove()),
-        },
-      });
-
-      document.getElementById('cards').append(card);
     });
   </script>
 </body>
