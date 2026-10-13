@@ -108,17 +108,18 @@
       <user-card first-name="Alan" last-name="Turing" role="member"></user-card>
     </div>
 
-    <h2>Reactive attributes</h2>
+    <h2>Live props and slots</h2>
     <div class="controls">
       <input id="first-name" value="Grace" aria-label="First name">
       <select id="role" aria-label="Role">
         <option>member</option>
         <option>admin</option>
       </select>
+      <button id="bio">Clear bio</button>
     </div>
     <div class="grid">
       <user-card id="live" first-name="Grace" last-name="Hopper" role="member">
-        <p>Edit the fields above: only the text that uses them changes.</p>
+        <p>Edit the fields above: only the text and slots that use them change.</p>
       </user-card>
     </div>
 
@@ -135,11 +136,18 @@
     const UserCard = define('user-card', document.getElementById('user-card'));
 
     const live = document.getElementById('live');
+    const bio = live.slots.default;
+
     document.getElementById('first-name').addEventListener('input', (event) => {
-      live.setAttribute('first-name', event.target.value);
+      live.props.firstName = event.target.value;
     });
     document.getElementById('role').addEventListener('change', (event) => {
-      live.setAttribute('role', event.target.value);
+      live.props.role = event.target.value;
+    });
+    document.getElementById('bio').addEventListener('click', (event) => {
+      // undefined brings back the slot's fallback content.
+      live.slots.default = live.slots.default ? undefined : bio;
+      event.target.textContent = live.slots.default ? 'Clear bio' : 'Restore bio';
     });
 
     const people = [
@@ -156,10 +164,10 @@
       const remove = document.createElement('button');
       remove.textContent = 'Remove';
 
-      const card = UserCard({
+      const card = new UserCard({
         props: { firstName, lastName, role },
         slots: {
-          default: `Card #${count}, created with UserCard().`,
+          default: `Card #${count}, created with new UserCard().`,
           actions: remove,
         },
       });

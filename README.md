@@ -36,7 +36,7 @@ Use it in HTML:
 Or create it from JavaScript:
 
 ```js
-const card = UserCard({
+const card = new UserCard({
   props: { firstName: 'Alex', variant: 'compact' },
   slots: {
     default: document.createElement('p'),
@@ -46,23 +46,34 @@ const card = UserCard({
 
 document.body.append(card);
 
-card.setAttribute('first-name', 'Sam'); // the heading updates
+card.props.firstName = 'Sam';        // the heading updates
+card.slots.actions = unfollowButton; // the footer's content is replaced
 ```
 
 ## API
 
 ### `define(name, template)`
 
-Registers a custom element called `name` that renders `template` into its own children (light DOM), and returns a factory for it. The template is copied at definition time, so later changes to it have no effect. Throws if `name` is not a valid custom element name or is already defined.
+Registers a custom element called `name` that renders `template` into its own children (light DOM), and returns its class. The template is copied at definition time, so later changes to it have no effect. Throws if `name` is not a valid custom element name or is already defined.
 
-### `factory({ props?, slots? })`
+### `new Component({ props?, slots? })`
 
 Returns a new, already rendered element, ready to insert.
 
-- `props` — attribute values, keyed by camelCase name: `firstName` sets `first-name`. Props the template does not use are still set as attributes, so `id`, `class` or `ariaLabel` work too. `undefined` leaves the attribute out.
+- `props` — attribute values, keyed by camelCase name: `firstName` sets `first-name`. Props the template does not use are still set as attributes, so `id`, `class` or `ariaLabel` work too. `undefined` or `null` leaves the attribute out.
 - `slots` — content for each slot, keyed by slot name.
 
-TypeScript users can name the element type: `define<UserCardElement>('user-card', template)`.
+Without options (`new Component()`, `document.createElement`, or HTML) the element renders when first connected to the document.
+
+### `element.props`
+
+Reads and writes the element's attributes by camelCase name. Reading returns the attribute's string value, or `undefined` when it is missing. Writing updates the rendered placeholders in place; `undefined`, `null` or `delete` removes the attribute. Changing the attribute directly works the same way.
+
+### `element.slots`
+
+Reads and writes each slot's content by slot name. Writing replaces the content in place; `undefined` or `delete` brings back the slot's fallback. Reading returns the assigned nodes as an array, or `undefined` while the fallback shows. Before the element is rendered, assigned content waits and takes priority over its children.
+
+TypeScript users can name the element type: `define<UserCardElement>('user-card', template)`, where `UserCardElement extends ComponentElement`.
 
 ### Props
 
@@ -76,17 +87,19 @@ TypeScript users can name the element type: `define<UserCardElement>('user-card'
 - `<slot>` (or `<slot name="">`) is the `default` slot; `<slot name="x">` is slot `x`.
 - In HTML, children go to the slot named by their `slot` attribute, or to the default slot. Whitespace and comments between them are ignored, so formatting does not hide fallback content.
 - From JavaScript, slot content can be a `Node`, a string, or any iterable of them: an array, a `NodeList`, a `DocumentFragment`. Strings are inserted as text. Passed nodes are **moved**, not copied.
+- Each `<slot>` is replaced with an empty comment that marks where its content goes, so the content can be swapped later. Comments do not affect `:empty`.
 - A slot without content keeps its fallback children, as in native Shadow DOM. Pass `[]` to empty it.
 - Slotted content is never interpolated, so `${...}` inside it is left as is.
 - Content for a slot the template does not declare, or a slot name declared twice, throws a `TemplateError`. In HTML the error is reported to the console and the element keeps its original children.
+- A slot's name is resolved once, when the element renders.
 
 ### Rendering
 
-An element renders once: when created by the factory, or when first connected to the document. Moving it later does not render it again. An element in the page's own HTML waits until the document has finished parsing, so its children are in place before the slots are filled. Children added after rendering stay where they are added; they are not assigned to slots.
+An element renders once: when created with options, or when first connected to the document. Moving it later does not render it again. An element in the page's own HTML waits until the document has finished parsing, so its children are in place before the slots are filled. Children appended after rendering stay where they are added; use `element.slots` to change slot content.
 
 ## Example
 
-[`example/index.html`](example/index.html) shows a component used in HTML, updated through its attributes, and created from JavaScript. Serve the repository root with any static server and open `/example/`:
+[`example/index.html`](example/index.html) shows a component used in HTML, updated through `props` and `slots`, and created with `new`. Serve the repository root with any static server and open `/example/`:
 
 ```sh
 npx serve .
