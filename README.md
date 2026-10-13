@@ -1,6 +1,6 @@
 # tagshift
 
-Turn a `<template>` into a ready-to-use element: fill its `<slot>`s and interpolate `${props}`. No dependencies, no build step, no virtual DOM.
+Turn a `<template>` into a custom element. Slots are filled from the element's children, `${props}` come from its attributes and update when they change. No dependencies, no build step, no Shadow DOM.
 
 ```sh
 npm install tagshift
@@ -11,66 +11,78 @@ npm install tagshift
 ```html
 <template id="user-card">
   <article class="card card--${variant}">
-    <h2>Hello, ${name}!</h2>
-    <div class="body"><slot></slot></div>
-    <footer><slot name="actions">No actions</slot></footer>
+    <h2>Hello, ${firstName}!</h2>
+    <div class="body"><slot>Nothing here yet</slot></div>
+    <footer><slot name="actions"></slot></footer>
   </article>
 </template>
 ```
 
 ```js
-import { create } from 'tagshift';
+import { define } from 'tagshift';
 
-const template = document.getElementById('user-card');
+const UserCard = define('user-card', document.getElementById('user-card'));
+```
 
-const element = create(template, {
+Use it in HTML:
+
+```html
+<user-card first-name="Alex" variant="compact">
+  <p>Joined in 2026.</p>
+  <button slot="actions">Follow</button>
+</user-card>
+```
+
+Or create it from JavaScript:
+
+```js
+const card = UserCard({
+  props: { firstName: 'Alex', variant: 'compact' },
   slots: {
-    default: document.createElement('div'),
-    actions: [saveButton, cancelButton],
-  },
-  props: {
-    name: 'Alex',
-    variant: 'compact',
+    default: document.createElement('p'),
+    actions: [followButton, messageButton],
   },
 });
 
-document.body.append(element);
+document.body.append(card);
+
+card.setAttribute('first-name', 'Sam'); // the heading updates
 ```
 
 ## API
 
-### `create(template, options?)`
+### `define(name, template)`
 
-Returns the template's root element, detached and ready to insert. The template itself is never modified, so it can be reused.
+Registers a custom element called `name` that renders `template` into its own children (light DOM), and returns a factory for it. The template is copied at definition time, so later changes to it have no effect. Throws if `name` is not a valid custom element name or is already defined.
 
-- `template` — an `HTMLTemplateElement`.
-- `options.props` — values for `${name}` placeholders.
-- `options.slots` — content for `<slot>` elements, keyed by slot name.
+### `factory({ props?, slots? })`
 
-TypeScript users can name the returned element type: `create<HTMLFormElement>(template)`.
+Returns a new, already rendered element, ready to insert.
+
+- `props` — attribute values, keyed by camelCase name: `firstName` sets `first-name`. Props the template does not use are still set as attributes, so `id`, `class` or `ariaLabel` work too. `undefined` leaves the attribute out.
+- `slots` — content for each slot, keyed by slot name.
+
+TypeScript users can name the element type: `define<UserCardElement>('user-card', template)`.
 
 ### Props
 
-- Placeholders work in text and in attribute values: `${name}`, `${ name }`. Names follow JavaScript identifier rules.
-- Values (strings, numbers, booleans, bigints) are converted with `String()` and inserted as **text**, so `<b>` in a value is shown literally, never parsed as HTML.
-- A placeholder with no matching prop throws a `TemplateError`, so typos surface immediately.
+- Placeholders work in text and in attribute values: `${firstName}`, `${ firstName }`. A placeholder shows the matching kebab-case attribute of the element.
+- When the attribute changes, only the text and attribute values that use it are updated; nothing is re-created.
+- Values are inserted as **text**, so `<b>` in a value is shown literally, never parsed as HTML.
+- A missing attribute renders as an empty string, the same as an empty one.
 
 ### Slots
 
 - `<slot>` (or `<slot name="">`) is the `default` slot; `<slot name="x">` is slot `x`.
-- Slot content can be a `Node`, a string, or any iterable of them: an array, a `NodeList`, a `DocumentFragment`. Strings are inserted as text.
-- Passed nodes are **moved** into the element, not copied.
+- In HTML, children go to the slot named by their `slot` attribute, or to the default slot. Whitespace and comments between them are ignored, so formatting does not hide fallback content.
+- From JavaScript, slot content can be a `Node`, a string, or any iterable of them: an array, a `NodeList`, a `DocumentFragment`. Strings are inserted as text. Passed nodes are **moved**, not copied.
 - A slot without content keeps its fallback children, as in native Shadow DOM. Pass `[]` to empty it.
-- Slotted content is inserted after interpolation, so `${...}` inside it is left as is.
-- Content for a slot the template does not declare, or a slot name declared twice, throws a `TemplateError`.
+- Slotted content is never interpolated, so `${...}` inside it is left as is.
+- Content for a slot the template does not declare, or a slot name declared twice, throws a `TemplateError`. In HTML the error is reported to the console and the element keeps its original children.
 
-### Root element
+### Rendering
 
-The template must contain exactly one root element. Whitespace and comments around it are ignored; anything else throws a `TemplateError`. A root `<slot>` is allowed, as long as its content resolves to a single element.
-
-### `TemplateError`
-
-Thrown when the template and the options do not match. Passing something other than a `<template>`, or unsupported slot content, throws a `TypeError`.
+An element renders once: when created by the factory, or when first connected to the document. Moving it later does not render it again. An element in the page's own HTML waits until the document has finished parsing, so its children are in place before the slots are filled. Children added after rendering stay where they are added; they are not assigned to slots.
 
 ## License
 
