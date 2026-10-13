@@ -62,9 +62,6 @@
       gap: 12px;
     }
 
-    /* The component renders into light DOM, so page styles reach it. */
-    stat-tile { display: block; }
-
     .tile {
       padding: 12px 14px;
       border: 1px solid var(--border);
@@ -94,31 +91,32 @@
 
   <main>
     <h1>tagshift</h1>
-    <p class="lead">Every second each <code>&lt;stat-tile&gt;</code> gets new <code>props</code>: text, a class and an inline style update in place.</p>
+    <p class="lead">Every second each tile gets new <code>props</code>, then <code>render()</code> updates its text, class and inline style in place.</p>
 
     <div class="controls">
       <button id="pause">Pause</button>
     </div>
-    <div class="grid">
-      <stat-tile id="cpu" label="CPU" unit="%"></stat-tile>
-      <stat-tile id="memory" label="Memory" unit="%"></stat-tile>
-      <stat-tile id="requests" label="Requests" unit="/s"></stat-tile>
-      <stat-tile id="latency" label="Latency" unit="ms"></stat-tile>
-    </div>
+    <div id="tiles" class="grid"></div>
   </main>
 
   <script type="module">
     import { define } from '../src/index.js';
 
-    define('stat-tile', document.getElementById('stat-tile'));
+    const StatTile = define(document.getElementById('stat-tile'));
 
     // A random walk per metric, written to the tiles every second.
     const metrics = [
-      { tile: document.getElementById('cpu'), value: 35, min: 0, max: 100, step: 12 },
-      { tile: document.getElementById('memory'), value: 62, min: 0, max: 100, step: 4 },
-      { tile: document.getElementById('requests'), value: 480, min: 0, max: 1000, step: 90 },
-      { tile: document.getElementById('latency'), value: 120, min: 20, max: 400, step: 35 },
+      { label: 'CPU', unit: '%', value: 35, min: 0, max: 100, step: 12 },
+      { label: 'Memory', unit: '%', value: 62, min: 0, max: 100, step: 4 },
+      { label: 'Requests', unit: '/s', value: 480, min: 0, max: 1000, step: 90 },
+      { label: 'Latency', unit: 'ms', value: 120, min: 20, max: 400, step: 35 },
     ];
+
+    const tiles = document.getElementById('tiles');
+    for (const metric of metrics) {
+      metric.tile = new StatTile({ props: { label: metric.label, unit: metric.unit } });
+      tiles.append(metric.tile.render());
+    }
 
     function tick() {
       for (const metric of metrics) {
@@ -133,6 +131,7 @@
           trend: delta >= 0 ? 'up' : 'down',
           percent: Math.round(((metric.value - metric.min) / (metric.max - metric.min)) * 100),
         });
+        metric.tile.render();
       }
     }
 
