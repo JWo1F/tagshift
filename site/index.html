@@ -264,6 +264,10 @@ cpu.render(); <span class="com">// same element</span></code></pre>
             <dd><p>Returns the rendered root element, updated with the current <code>props</code> and <code>slots</code>. The first call builds it; later calls update the same element in place.</p></dd>
           </div>
           <div class="api-item">
+            <dt><code>component.element</code></dt>
+            <dd><p>The rendered root element as of the last <code>render()</code>, without updating it; <code>null</code> before the first <code>render()</code>.</p></dd>
+          </div>
+          <div class="api-item">
             <dt><code>TemplateError</code></dt>
             <dd><p>Thrown for a template without exactly one root element, content for a slot the template does not declare, or a slot name declared twice. An update that throws leaves the element as it was.</p></dd>
           </div>

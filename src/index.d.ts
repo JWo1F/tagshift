@@ -37,6 +37,12 @@ export interface Component<T extends Element = HTMLElement> {
   slots: Record<string, SlotContent>;
 
   /**
+   * The rendered element as of the last `render()`, without updating it, or
+   * `null` before the first `render()`.
+   */
+  readonly element: T | null;
+
+  /**
    * Returns the rendered element, updated with the current `props` and
    * `slots`. The first call builds it; every call returns the same element.
    *

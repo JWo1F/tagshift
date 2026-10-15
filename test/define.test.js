@@ -165,6 +165,25 @@ describe('define', () => {
     });
   });
 
+  describe('element', () => {
+    it('is null before the first render()', () => {
+      const Component = define(template('<p>${name}</p>'));
+
+      expect(new Component().element).toBeNull();
+    });
+
+    it('returns the rendered element without updating it', () => {
+      const Component = define(template('<p>${name}</p>'));
+      const component = new Component({ props: { name: 'Alex' } });
+      const element = component.render();
+
+      component.props.name = 'Sam';
+
+      expect(component.element).toBe(element);
+      expect(element.textContent).toBe('Alex');
+    });
+  });
+
   describe('props', () => {
     it('replace placeholders in text', () => {
       expect(render('<p>Hello, ${name}!</p>', { props: { name: 'Alex' } }).textContent).toBe('Hello, Alex!');

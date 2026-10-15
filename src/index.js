@@ -70,6 +70,16 @@ export function define(template) {
     }
 
     /**
+     * The rendered element as of the last `render()`, without updating it,
+     * or `null` before the first `render()`.
+     *
+     * @returns {Element | null}
+     */
+    get element() {
+      return this.#element;
+    }
+
+    /**
      * Returns the rendered element, updated with the current `props` and
      * `slots`. Every call returns the same element.
      *

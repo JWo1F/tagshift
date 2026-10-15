@@ -64,6 +64,10 @@ Returns the rendered root element, updated with the current `props` and `slots`.
 
 TypeScript users can name the root element type: `define<HTMLFormElement>(template)`.
 
+### `component.element`
+
+The rendered root element as of the last `render()`, without updating it; `null` before the first `render()`.
+
 ### Props
 
 - Placeholders work in text and in attribute values: `${name}`, `${ name }`. Names follow JavaScript identifier rules.
