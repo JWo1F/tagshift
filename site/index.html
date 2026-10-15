@@ -268,6 +268,14 @@ cpu.render(); <span class="com">// same element</span></code></pre>
             <dd><p>The rendered root element as of the last <code>render()</code>, without updating it; <code>null</code> before the first <code>render()</code>.</p></dd>
           </div>
           <div class="api-item">
+            <dt><code>escape(value)</code></dt>
+            <dd><p>Replaces <code>&amp;</code>, <code>&lt;</code>, <code>&gt;</code>, <code>"</code> and <code>'</code> with HTML entities, for markup you build yourself. Non-strings are converted with <code>String()</code>; <code>undefined</code> and <code>null</code> become an empty string.</p></dd>
+          </div>
+          <div class="api-item">
+            <dt><code>html`…`</code></dt>
+            <dd><p>A template tag that parses its markup into a <code>DocumentFragment</code>, escaping every interpolated value with <code>escape()</code>. Pass the result as slot content.</p></dd>
+          </div>
+          <div class="api-item">
             <dt><code>TemplateError</code></dt>
             <dd><p>Thrown for a template without exactly one root element, content for a slot the template does not declare, or a slot name declared twice. An update that throws leaves the element as it was.</p></dd>
           </div>

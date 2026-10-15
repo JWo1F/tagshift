@@ -79,3 +79,17 @@ export class TemplateError extends Error {
  * element, or its root is a `<slot>`.
  */
 export function define<T extends Element = HTMLElement>(template: HTMLTemplateElement): ComponentClass<T>;
+
+/**
+ * Escapes `&`, `<`, `>`, `"` and `'` for use in HTML text or a quoted
+ * attribute value. Non-strings are converted with `String()`; `undefined`
+ * and `null` become an empty string.
+ */
+export function escape(value: unknown): string;
+
+/**
+ * A template tag that parses its markup into a fragment, escaping every
+ * interpolated value with `escape()`. The result can be passed as slot
+ * content.
+ */
+export function html(strings: TemplateStringsArray, ...values: unknown[]): DocumentFragment;

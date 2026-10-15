@@ -129,6 +129,43 @@ export function define(template) {
 }
 
 /**
+ * The characters that are special in HTML text and quoted attribute values.
+ */
+const ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/**
+ * Escapes `value` for use in HTML text or a quoted attribute value.
+ * Non-strings are converted with `String()`; `undefined` and `null` become
+ * an empty string, as in `${name}` placeholders.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function escape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ENTITIES[char]);
+}
+
+/**
+ * A template tag that parses its markup into a fragment, escaping every
+ * interpolated value with `escape()`. The result can be passed as slot
+ * content.
+ *
+ * @param {TemplateStringsArray} strings
+ * @param {...unknown} values
+ * @returns {DocumentFragment}
+ */
+export function html(strings, ...values) {
+  let markup = strings[0];
+  values.forEach((value, i) => {
+    markup += escape(value) + strings[i + 1];
+  });
+
+  const template = document.createElement('template');
+  template.innerHTML = markup;
+  return template.content;
+}
+
+/**
  * Returns the single root element of `fragment`. Whitespace and comments
  * around the root are ignored.
  */

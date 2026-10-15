@@ -85,6 +85,26 @@ The rendered root element as of the last `render()`, without updating it; `null`
 - Slotted content is never interpolated, so `${...}` inside it is left as is. A slot's name may use a placeholder; it is resolved on the first render.
 - Content for a slot the template does not declare, or a slot name declared twice, makes `render()` throw a `TemplateError`. An update that throws leaves the element as it was.
 
+### `escape(value)`
+
+Returns `value` with `&`, `<`, `>`, `"` and `'` replaced by HTML entities, safe to put into HTML text or a quoted attribute value. Non-strings are converted with `String()`; `undefined` and `null` become an empty string, as in placeholders.
+
+```js
+import { escape } from 'tagshift';
+
+element.innerHTML = `<b>${escape(user.name)}</b>`;
+```
+
+### `` html`...` ``
+
+A template tag that parses its markup into a `DocumentFragment`, escaping every interpolated value with `escape()`. Pass the result as slot content:
+
+```js
+import { html } from 'tagshift';
+
+card.slots.actions = html`<button title="${hint}">${label}</button>`;
+```
+
 ### `TemplateError`
 
 Thrown when the template and the component's props or slots do not match. Passing something other than a `<template>` to `define()`, or unsupported slot content, throws a `TypeError`.
